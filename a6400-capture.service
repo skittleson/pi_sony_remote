@@ -1,0 +1,20 @@
+[Unit]
+Description=Sony a6400 tethered capture monitor
+After=multi-user.target
+
+[Service]
+Type=simple
+User=dietpi
+SupplementaryGroups=plugdev
+# gphoto2 writes a temporary capture file to the current directory before
+# moving it to --filename. systemd's default WorkingDirectory is / (not
+# writable by dietpi), which caused "Permission denied / Could not get image".
+WorkingDirectory=/home/dietpi/downloads
+ExecStart=/usr/bin/lua /home/dietpi/a6400_capture.lua
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/dietpi/a6400_capture.log
+StandardError=append:/home/dietpi/a6400_capture.log
+
+[Install]
+WantedBy=multi-user.target
