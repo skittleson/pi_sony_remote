@@ -196,7 +196,7 @@ sock.close()
 - **Copyparty HTTP server** — thumbnails, grid view, browse from any LAN browser at `http://<pi-ip>:8080`
 - **USB auto-recovery** — Lua monitor detects gphoto2 failures from USB drops and relaunches the tethered session
 - **systemd integration** — capture runs as a persistent service with journal logging
-- **BLE notify** — instant Bluetooth Low Energy notification on each new capture; Android client wakes and connects via RFCOMM
+- **BLE notify** — instant Bluetooth Low Energy notification on each new capture (Pi Zero 2 W and later; not Pi Zero W — see Hardware limitation)
 - **Source-verified gphoto2** — built from source (2.5.32) with SHA256 verification; Raspbian only ships 2.5.28
 
 <details>
@@ -274,6 +274,28 @@ a notification.
   time of capture, the notification is lost (no queuing)
 - The BLE service and RFCOMM server run as separate `systemd` units for
   process isolation
+
+### Hardware limitation: Pi Zero W
+
+The **Pi Zero W** cannot run the BLE notify service. It uses the Broadcom
+BCM43430A1 Bluetooth chip, which only supports BLE central mode (scanning,
+connecting as a client). It does not support BLE peripheral mode
+(advertising, acting as a server). BlueZ logs this as:
+
+```
+Failed to add advertisement: Invalid Parameters (0x0d)
+```
+
+This is a hardware limitation — no software workaround exists.
+
+| Board | BT Chip | BLE Peripheral |
+|---|---|---|
+| Pi Zero W | BCM43430A1 | No |
+| Pi Zero 2 W | BCM4343C0 | Yes |
+| Pi 3 / Pi 4 / Pi 5 | BCM4343C0 | Yes |
+
+If you need BLE notify, use a Pi Zero 2 W or later. The RFCOMM file
+server works on all models.
 
 ## Architecture
 
