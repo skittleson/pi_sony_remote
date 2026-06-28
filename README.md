@@ -233,8 +233,8 @@ to the RFCOMM server to fetch the file using the existing binary protocol.
 
 | Item | UUID |
 |------|------|
-| Service | `F000A001-0451-4000-B000-000000000000` |
-| Characteristic | `F000A002-0451-4000-B000-000000000000` |
+| Service | `12341000-1234-1234-1234-123456789abc` |
+| Characteristic | `2A6E` (BLE short UUID) |
 
 The characteristic value is the filename as UTF-8 bytes. Filenames are
 max 12 bytes (`NNNNN.jpg`), well within the BLE ATT MTU of 20 bytes.
@@ -312,7 +312,7 @@ All three services can run simultaneously, or independently:
 | Service | Command | Port/Protocol | Notes |
 |---------|---------|---------------|-------|
 | Tethered capture | `sudo systemctl enable --now a6400-capture` | USB | Auto-restarts on USB drop |
-| BLE notify | `sudo systemctl enable --now a6400-ble-notify` | BLE (GATT) | Requires root, bluepy |
+| BLE notify | `sudo systemctl enable --now a6400-ble-notify` | BLE (GATT) | Requires bluezero (pip3 install bluezero) |
 | Bluetooth server | `python3 a6400_bt_server.py` | RFCOMM | Requires Pillow, bluez |
 | HTTP server | `bash copyparty-setup.sh && sudo systemctl enable --now copyparty` | `:8080` | Login: admin/admin |
 
@@ -336,7 +336,7 @@ All three services can run simultaneously, or independently:
 ```bash
 python3 test_bt_server.py          # Unit tests (protocol, errors, path traversal)
 python3 test_bt_compression.py     # Integration tests (JPEG quality, dimensions, sizes)
-python3 test_ble_notify.py        # Unit tests (file monitoring, GATT structure)
+python3 test_ble_notify.py        # Unit tests (file monitoring, deduplication)
 sudo python3 e2e_ble_notify_test.py <mac>  # End-to-end BLE notify test
 ```
 
@@ -354,5 +354,5 @@ sudo python3 e2e_ble_notify_test.py <mac>  # End-to-end BLE notify test
 | `copyparty-start.sh` | Startup wrapper for copyparty |
 | `test_bt_server.py` | Unit tests for the Bluetooth server protocol |
 | `test_bt_compression.py` | Integration tests for JPEG compression pipeline |
-| `test_ble_notify.py` | Unit tests for BLE notify file monitoring |
+| `test_ble_notify.py` | Unit tests for BLE notify file monitoring and deduplication |
 | `e2e_ble_notify_test.py` | End-to-end test client for BLE notifications |

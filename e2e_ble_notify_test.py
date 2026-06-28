@@ -2,9 +2,8 @@
 """
 End-to-end BLE notify test client.
 
-Run this on a Linux laptop (or any machine with bluepy and a BLE adapter)
-to connect to the Pi's BLE notify service, enable notifications, and print
-received filename events.
+Run this on a Linux laptop to connect to the Pi's BLE notify service,
+enable notifications, and print received filename events.
 
 Usage:
   python3 e2e_ble_notify_test.py <PI_MAC_ADDRESS>
@@ -26,8 +25,8 @@ import time
 
 import bluepy.btle as btle
 
-SERVICE_UUID = "F000A001-0451-4000-B000-000000000000"
-CHAR_UUID = "F000A002-0451-4000-B000-000000000000"
+SERVICE_UUID = "12341000-1234-1234-1234-123456789abc"
+CHAR_UUID = "2A6E"
 TEST_TIMEOUT_SECONDS = 60
 
 class NotifyDelegate(btle.DefaultDelegate):
@@ -62,16 +61,16 @@ def main():
 
             print(f"Connected. Service {SERVICE_UUID}, Char {CHAR_UUID}")
 
-            # Enable notifications on the characteristic
-            # The Client Characteristic Configuration descriptor (0x2902)
-            # needs to be written with value 0x0001 for notifications
+            # Enable notifications via the CCCD descriptor (0x2902)
             print("Enabling notifications...")
-            if hasattr(char, 'write'):
-                # Try the descriptor write approach
-                try:
-                    char.write(b'\x01\x00', withResponse=False)
-                except Exception:
-                    pass
+            descriptors = char.getDescriptors()
+            if descriptors:
+                for desc in descriptors:
+                    if str(desc.uuid).startswith("0x2902") or str(desc.uuid) == "2902":
+                        desc.write(b"\x01\x00")
+                        break
+            else:
+                print("WARNING: no CCCD descriptor found — notifications may not work")
 
             print(f"Listening for notifications ({TEST_TIMEOUT_SECONDS}s)...")
             print("Create a new .jpg file in /home/dietpi/downloads/ on the Pi now.")
@@ -95,7 +94,8 @@ def main():
                 sys.exit(0)
             else:
                 print("No notifications received — was a new .jpg file created?")
-                print("Ensure the Pi's BLE service is running: sudo systemctl status a6400-ble-notify")
+                print("Ensure the Pi's BLE service is running:")
+                print("  sudo systemctl status a6400-ble-notify")
                 sys.exit(1)
 
     except btle.BTLEDisconnectError as e:

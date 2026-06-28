@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Unit tests for a6400_ble_notify (file monitoring and GATT structure).
+"""Unit tests for a6400_ble_notify file monitoring logic.
 
-The actual BLE peripheral cannot start without root and a BLE controller,
-so these tests focus on the logic that can be verified locally:
-
-  - File polling and deduplication
-  - GATT service has correct UUID and properties (hardware-dependent)
-  - Notify characteristic sends correct filename bytes (hardware-dependent)
+The BLE peripheral cannot start without root and a BLE controller,
+so these tests focus on the file monitoring and deduplication logic
+that can be verified without hardware.
 """
 
 import os
@@ -14,37 +11,6 @@ import sys
 import tempfile
 
 import a6400_ble_notify as bn
-
-# ---------------------------------------------------------------------------
-# GATT structure tests (skip if bluepy lacks peripheral API)
-# ---------------------------------------------------------------------------
-
-class SkipTest(Exception):
-    """Raised when a test should be skipped (e.g. no BLE hardware)."""
-
-def _skip_if_no_peripheral_api():
-    """Skip tests requiring bluepy peripheral mode."""
-    import bluepy.btle as btle
-    if not hasattr(btle, 'CHAR_PROP_NOTIFY'):
-        raise SkipTest("bluepy lacks CHAR_PROP_NOTIFY (peripheral mode not available)")
-
-def test_service_uuid():
-    _skip_if_no_peripheral_api()
-    svc = bn.NotifyService()
-    assert str(svc.uuid) == bn.SERVICE_UUID
-
-def test_char_uuid_and_properties():
-    _skip_if_no_peripheral_api()
-    char = bn.NotifyCharacteristic()
-    assert str(char.uuid) == bn.CHAR_UUID
-    import bluepy.btle as btle
-    assert char.properties == btle.CHAR_PROP_NOTIFY
-
-def test_notify_value():
-    _skip_if_no_peripheral_api()
-    char = bn.NotifyCharacteristic()
-    char.setValue(b"00002.jpg")
-    assert char.getValue() == b"00002.jpg"
 
 # ---------------------------------------------------------------------------
 # File monitoring tests
@@ -100,34 +66,41 @@ def test_prune_deleted():
         pruned = notified & bn.get_jpg_files(tmpdir)
         assert "00001.jpg" not in pruned
 
+def test_poll_files_returns_true():
+    """poll_files always returns True to keep the GLib timeout active."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Temporarily override the download dir for this test
+        orig_dir = bn.DOWNLOAD_DIR
+        bn.DOWNLOAD_DIR = tmpdir
+        try:
+            result = bn.poll_files(None)
+            assert result is True
+        finally:
+            bn.DOWNLOAD_DIR = orig_dir
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
 def main():
     tests = [
-        test_service_uuid,
-        test_char_uuid_and_properties,
-        test_notify_value,
         test_get_jpg_files,
         test_get_jpg_files_empty_dir,
         test_get_jpg_files_missing_dir,
         test_deduplication,
         test_prune_deleted,
+        test_poll_files_returns_true,
     ]
-    passed = failed = skipped = 0
+    passed = failed = 0
     for t in tests:
         try:
             t()
             print(f"[PASS] {t.__name__}")
             passed += 1
-        except SkipTest as e:
-            print(f"[SKIP] {t.__name__}: {e}")
-            skipped += 1
         except Exception as e:
             print(f"[FAIL] {t.__name__}: {e}")
             failed += 1
-    print(f"\n{passed} passed, {failed} failed, {skipped} skipped")
+    print(f"\n{passed} passed, {failed} failed")
     sys.exit(1 if failed else 0)
 
 if __name__ == "__main__":

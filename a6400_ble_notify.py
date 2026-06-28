@@ -5,32 +5,37 @@ Sony a6400 BLE notify server.
 Monitors /home/dietpi/downloads/ for new JPEG files and sends a BLE
 notification to any subscribed client with the filename (e.g. "00002.jpg").
 
-Single-threaded: the main loop calls bluepy's waitForNotifications(2.0) to
-yield for BLE events, then checks for new files on each iteration.
+Uses bluezero's peripheral/GATT server API. The bluezero GLib event loop
+handles BLE events; a GLib timeout callback polls the filesystem at a
+configurable interval.
 
 Requires root (or bluetooth group) to access the BLE controller.
+Requires bluezero (pip3 install bluezero).
 """
 
-import signal
 import logging
 import os
-import time
+import signal
+import sys
 
-import bluepy.btle as btle
+from bluezero import adapter
+from bluezero import async_tools
+from bluezero import peripheral
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 DOWNLOAD_DIR = "/home/dietpi/downloads"
-POLL_INTERVAL_SECONDS = 2.0
+POLL_INTERVAL_SECONDS = 2
 
-# Custom 128-bit UUIDs (generated, no collision risk with standard profiles)
-SERVICE_UUID = "F000A001-0451-4000-B000-000000000000"
-CHAR_UUID = "F000A002-0451-4000-B000-000000000000"
+# Custom 128-bit UUIDs
+SERVICE_UUID = "12341000-1234-1234-1234-123456789abc"
+# 16-bit short UUID — BLE-compatible, no need for full 128-bit
+CHAR_UUID = "2A6E"
 
 # ---------------------------------------------------------------------------
-# Logging setup (timestamped to stdout, captured by systemd journal)
+# Logging setup
 # ---------------------------------------------------------------------------
 
 logging.basicConfig(
@@ -40,32 +45,11 @@ logging.basicConfig(
 log = logging.getLogger("a6400-ble-notify")
 
 # ---------------------------------------------------------------------------
-# GATT definitions
+# State — characteristic reference captured from the notify_callback
 # ---------------------------------------------------------------------------
 
-class NotifyCharacteristic(btle.Characteristic):
-    """Notify characteristic that emits the filename when a new file appears."""
-
-    def __init__(self):
-        super().__init__(
-            uuid=CHAR_UUID,
-            properties=btle.CHAR_PROP_NOTIFY,
-            value=b"",
-        )
-
-    def onSubscribe(self, handle, maxValue):
-        log.info("client subscribed (handle=%s, max_value=%d)", handle, maxValue)
-
-    def onUnsubscribe(self, handle):
-        log.info("client unsubscribed (handle=%s)", handle)
-
-
-class NotifyService(btle.Service):
-    """BLE GATT service containing the notify characteristic."""
-
-    def __init__(self):
-        super().__init__(uuid=SERVICE_UUID)
-        self.characteristics = [NotifyCharacteristic()]
+char_obj = None
+notified = set()
 
 # ---------------------------------------------------------------------------
 # File monitoring
@@ -83,66 +67,88 @@ def get_jpg_files(directory):
         return set()
 
 # ---------------------------------------------------------------------------
-# Main loop
+# BLE callbacks
+# ---------------------------------------------------------------------------
+
+def on_notify_toggle(notifying, characteristic):
+    """Called when a client enables or disables notifications.
+
+    We capture the characteristic reference here so we can call
+    set_value() from the poll callback.
+    """
+    global char_obj
+    char_obj = characteristic
+    if notifying:
+        log.info("client subscribed to notifications")
+    else:
+        log.info("client unsubscribed from notifications")
+
+def poll_files(_unused=None):
+    """GLib timeout callback — poll for new JPEG files every interval.
+
+    Returns True to keep the timeout active.
+    """
+    global notified
+
+    current_files = get_jpg_files(DOWNLOAD_DIR)
+    new_files = current_files - notified
+
+    for filename in new_files:
+        if char_obj:
+            data = list(filename.encode("utf-8"))
+            log.info("NOTIFY %s (%d bytes)", filename, len(data))
+            char_obj.set_value(data)
+        notified.add(filename)
+
+    # Prune notified set — remove entries for files no longer on disk
+    notified = notified & current_files
+
+    return True
+
+# ---------------------------------------------------------------------------
+# Main
 # ---------------------------------------------------------------------------
 
 def main():
-    log.info("starting BLE notify server (dir=%s, poll=%ss)", DOWNLOAD_DIR, POLL_INTERVAL_SECONDS)
+    adapter_address = list(adapter.Adapter.available())[0].address
+    log.info("starting BLE notify server on %s (dir=%s, poll=%ds)",
+             adapter_address, DOWNLOAD_DIR, POLL_INTERVAL_SECONDS)
 
-    peripheral = btle.Peripheral()
-    peripheral.addService(NotifyService())
-    peripheral.startAdvertising()
+    periph = peripheral.Peripheral(
+        adapter_address,
+        local_name="a6400-notify",
+        appearance=1344,
+    )
 
-    # Grab a reference to the characteristic for sending notifies
-    service = peripheral.getServiceByUUID(SERVICE_UUID)
-    char = service.getCharacteristics(CHAR_UUID)[0]
+    periph.add_service(srv_id=1, uuid=SERVICE_UUID, primary=True)
+    periph.add_characteristic(
+        srv_id=1,
+        chr_id=1,
+        uuid=CHAR_UUID,
+        value=[],
+        notifying=False,
+        flags=["notify"],
+        read_callback=None,
+        write_callback=None,
+        notify_callback=on_notify_toggle,
+    )
 
-    log.info("BLE advertising started, service %s, characteristic %s", SERVICE_UUID, CHAR_UUID)
-
-    notified = set()  # filenames we have already notified about
-
-    # ------------------------------------------------------------------
-    # Signal handling — graceful shutdown
-    # ------------------------------------------------------------------
-
-    def _shutdown(signum, frame):
+    # Graceful shutdown on SIGTERM / SIGINT — quit the GLib loop
+    def _shutdown(signum, _frame):
         sig_name = signal.Signals(signum).name
         log.info("received %s — shutting down", sig_name)
-        try:
-            peripheral.stopAdvertising()
-            peripheral._stopNotifying()
-        except Exception:
-            pass
-        log.info("BLE peripheral stopped")
-        os._exit(0)
+        periph.mainloop.quit()
 
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
-    # ------------------------------------------------------------------
-    # Main event loop
-    # ------------------------------------------------------------------
+    # Register the filesystem poll timer (runs in GLib context)
+    async_tools.add_timer_seconds(POLL_INTERVAL_SECONDS, poll_files)
 
-    while True:
-        # Yield control to bluepy so BLE events (subscribe/unsubscribe)
-        # can be processed. The timeout doubles as the polling interval.
-        peripheral.waitForNotifications(POLL_INTERVAL_SECONDS)
+    log.info("BLE advertising started (service=%s, char=%s)",
+             SERVICE_UUID, CHAR_UUID)
 
-        current_files = get_jpg_files(DOWNLOAD_DIR)
-        new_files = current_files - notified
-
-        for filename in new_files:
-            data = filename.encode("utf-8")
-            log.info("NOTIFY %s (%d bytes)", filename, len(data))
-            char.setValue(data)
-            notified.add(filename)
-
-            # Small yield to let the notification propagate
-            peripheral.waitForNotifications(0.05)
-
-        # Prune notified set to avoid unbounded growth if files are deleted
-        # over time. Keep notified set bounded to currently-existing files.
-        notified = notified & current_files
+    periph.publish()
 
 if __name__ == "__main__":
     main()
