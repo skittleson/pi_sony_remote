@@ -16,7 +16,8 @@ Opcodes:
   0x02 GET   — payload is quality byte + filename. Response: 0x82 with JPEG bytes.
     Quality: 0=original, 1=half-size Q75, 2=1200px W Q75, 3=1200px W Q40
   0x03 WAIT  — no payload. Server pushes 0x83 NOTIFY on each new file.
-    Client can send CMD_LIST or CMD_GET while waiting to cancel/interrupt.
+    Sending CMD_WAIT again stops the previous wait and starts a new one.
+    CMD_LIST / CMD_GET are allowed but do NOT cancel the wait thread.
 
 Error responses:
   0xFE — error, payload is ASCII error message.
