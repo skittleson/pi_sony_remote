@@ -4,9 +4,13 @@
 Run on the Pi: timeout 120 python3 test_bt_compression.py
 """
 
+import os
 import struct
 import io
 import sys
+
+_here = os.path.dirname(__file__)
+sys.path.insert(0, os.path.join(_here, '..', 'services'))
 
 from PIL import Image
 import a6400_bt_server as bt

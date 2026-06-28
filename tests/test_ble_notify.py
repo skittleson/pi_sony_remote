@@ -10,6 +10,9 @@ import os
 import sys
 import tempfile
 
+_here = os.path.dirname(__file__)
+sys.path.insert(0, os.path.join(_here, '..', 'services'))
+
 import a6400_ble_notify as bn
 
 # ---------------------------------------------------------------------------

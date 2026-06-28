@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Fast unit tests for a6400_bt_server (no heavy compression)."""
 
+import os
 import struct
 import io
 import sys
 import threading
+
+_here = os.path.dirname(__file__)
+sys.path.insert(0, os.path.join(_here, '..', 'services'))
 
 # Mock the bluetooth module if not available (local dev machine)
 try:

@@ -44,11 +44,11 @@ sudo usermod -aG plugdev "$USER"
 # Install the capture monitor and systemd service
 echo "[4/4] Installing capture monitor and service..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cp "$SCRIPT_DIR/a6400_capture.lua" "$HOME/a6400_capture.lua"
+cp "$SCRIPT_DIR/../services/a6400_capture.lua" "$HOME/a6400_capture.lua"
 chmod +x "$HOME/a6400_capture.lua"
 
-if [ -f "$SCRIPT_DIR/a6400-capture.service" ]; then
-    sudo cp "$SCRIPT_DIR/a6400-capture.service" /etc/systemd/system/a6400-capture.service
+if [ -f "$SCRIPT_DIR/systemd/a6400-capture.service" ]; then
+    sudo cp "$SCRIPT_DIR/systemd/a6400-capture.service" /etc/systemd/system/a6400-capture.service
     sudo systemctl daemon-reload
     sudo systemctl enable a6400-capture
     echo "  Service installed and enabled."
