@@ -6,20 +6,22 @@ Serves files from /home/dietpi/downloads/ over an RFCOMM socket.
 
 Binary protocol (length-prefixed, minimal overhead):
   Command:
-    [1 byte opcode] [2 bytes big-endian payload length] [payload]
+    [1 byte opcode] [4 bytes big-endian payload length] [payload]
 
   Response:
-    [1 byte opcode] [2 bytes big-endian payload length] [payload]
+    [1 byte opcode] [4 bytes big-endian payload length] [payload]
 
 Opcodes:
   0x01 LIST  — no payload. Response: 0x81 with newline-delimited filenames.
-  0x02 GET   — payload is filename + quality byte. Response: 0x82 with JPEG bytes.
+  0x02 GET   — payload is quality byte + filename. Response: 0x82 with JPEG bytes.
     Quality: 0=original, 1=half-size Q75, 2=1200px W Q75, 3=1200px W Q40
+  0x03 WAIT  — no payload. Server pushes 0x83 NOTIFY on each new file.
+    Client can send CMD_LIST or CMD_GET while waiting to cancel/interrupt.
 
 Error responses:
   0xFE — error, payload is ASCII error message.
 
-Only one client at a time. Additional connections are rejected with 0xFE.
+Only one client at a time.
 """
 
 import struct
@@ -27,6 +29,8 @@ import io
 import bluetooth
 import os
 import logging
+import time
+import threading
 
 from PIL import Image
 
@@ -42,8 +46,10 @@ log = logging.getLogger("a6400-bt")
 # Opcodes
 CMD_LIST = 0x01
 CMD_GET  = 0x02
+CMD_WAIT = 0x03
 RSP_LIST = 0x81
 RSP_GET  = 0x82
+RSP_NOTIFY = 0x83
 RSP_ERR  = 0xFE
 
 MAX_PAYLOAD = 10 * 1024 * 1024  # 10 MB cap for GET payload read
@@ -130,9 +136,42 @@ def handle_get(payload):
     except Exception as e:
         return RSP_ERR, ("DECODE_ERROR: %s" % e).encode()
 
+# ---------------------------------------------------------------------------
+# File monitoring for WAIT/NOTIFY
+# ---------------------------------------------------------------------------
+
+_POLL_INTERVAL = 2  # seconds
+
+def _get_jpg_files():
+    """Return a set of .jpg filenames in DOWNLOAD_DIR."""
+    try:
+        return {
+            f for f in os.listdir(DOWNLOAD_DIR)
+            if os.path.isfile(os.path.join(DOWNLOAD_DIR, f))
+            and f.lower().endswith((".jpg", ".jpeg"))
+        }
+    except OSError:
+        return set()
+
+def _wait_for_new_files(notified_set, stop_event):
+    """Block until a new .jpg file appears, then return its filename.
+
+    Returns None if stop_event is set (signal to exit).
+    """
+    while not stop_event.is_set():
+        current = _get_jpg_files()
+        new = current - notified_set
+        if new:
+            return sorted(new)[0]
+        time.sleep(_POLL_INTERVAL)
+    return None
+
 def handle_client(client_sock):
     """Process commands from a single client until disconnect."""
     log.info("client connected")
+    notified = set()
+    stop_event = threading.Event()
+    wait_thread = None
     try:
         while True:
             opcode, payload = read_packet(client_sock)
@@ -150,6 +189,22 @@ def handle_client(client_sock):
                 filename = payload[1:].decode("ascii", errors="replace")
                 rsp_code, rsp_data = handle_get(payload)
                 log.info("GET %s q%d -> %d bytes (%02x)", filename, quality, len(rsp_data), rsp_code)
+            elif opcode == CMD_WAIT:
+                # If a wait thread is already running, signal it to stop
+                if wait_thread is not None and wait_thread.is_alive():
+                    stop_event.set()
+                    wait_thread.join(timeout=5)
+
+                stop_event.clear()
+                # Start a background thread to poll for new files
+                wait_thread = threading.Thread(
+                    target=_wait_notify_loop,
+                    args=(client_sock, notified, stop_event),
+                    daemon=True,
+                )
+                wait_thread.start()
+                send_packet(client_sock, RSP_LIST, b"")
+                continue
             else:
                 log.warning("unknown opcode %02x", opcode)
                 send_packet(client_sock, RSP_ERR, ("UNKNOWN_CMD: %02x" % opcode).encode())
@@ -161,8 +216,28 @@ def handle_client(client_sock):
     except Exception as e:
         log.exception("unhandled error")
     finally:
+        if wait_thread is not None and wait_thread.is_alive():
+            stop_event.set()
+            wait_thread.join(timeout=5)
         client_sock.close()
         log.info("client disconnected")
+
+def _wait_notify_loop(sock, notified_set, stop_event):
+    """Background thread: poll for new files and send NOTIFY packets.
+
+    Exits when stop_event is set (signal from main thread).
+    """
+    while not stop_event.is_set():
+        filename = _wait_for_new_files(notified_set, stop_event)
+        if filename is None:
+            return  # signaled to stop
+        data = filename.encode("ascii")
+        notified_set.add(filename)
+        log.info("NOTIFY %s", filename)
+        try:
+            send_packet(sock, RSP_NOTIFY, data)
+        except (ConnectionError, OSError):
+            return  # client disconnected
 
 def main():
     log.info("starting Bluetooth file server on RFCOMM channel %d", RFCOMM_CHANNEL)

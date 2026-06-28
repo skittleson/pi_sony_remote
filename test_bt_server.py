@@ -4,6 +4,16 @@
 import struct
 import io
 import sys
+import threading
+
+# Mock the bluetooth module if not available (local dev machine)
+try:
+    import bluetooth
+except ImportError:
+    import types
+    bluetooth = types.ModuleType("bluetooth")
+    bluetooth.RFCOMM = 1
+    sys.modules["bluetooth"] = bluetooth
 
 import a6400_bt_server as bt
 
@@ -83,6 +93,49 @@ def test_send_packet_format():
     rsock.close()
     wsock.close()
 
+def test_get_jpg_files():
+    """_get_jpg_files returns only jpg/jpeg files."""
+    import os, tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for name in ("00001.jpg", "00002.jpeg", "readme.txt", ".hidden"):
+            open(os.path.join(tmpdir, name), "w").close()
+        orig_dir = bt.DOWNLOAD_DIR
+        bt.DOWNLOAD_DIR = tmpdir
+        try:
+            result = bt._get_jpg_files()
+            assert "00001.jpg" in result
+            assert "00002.jpeg" in result
+            assert "readme.txt" not in result
+            assert ".hidden" not in result
+        finally:
+            bt.DOWNLOAD_DIR = orig_dir
+
+def test_notify_dedup():
+    """_wait_for_new_files deduplicates — same file not returned twice."""
+    import os, tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        open(os.path.join(tmpdir, "00001.jpg"), "w").close()
+        orig_dir = bt.DOWNLOAD_DIR
+        bt.DOWNLOAD_DIR = tmpdir
+        try:
+            notified = set()
+            stop = threading.Event()
+            f1 = bt._wait_for_new_files(notified, stop)
+            assert f1 == "00001.jpg"
+            notified.add(f1)
+            # Same file should not be returned again
+            notified.add(f1)
+            # Simulate a new file
+            open(os.path.join(tmpdir, "00002.jpg"), "w").close()
+            f2 = bt._wait_for_new_files(notified, stop)
+            assert f2 == "00002.jpg"
+            # Stop event should cause immediate exit
+            stop.set()
+            f3 = bt._wait_for_new_files(notified, stop)
+            assert f3 is None
+        finally:
+            bt.DOWNLOAD_DIR = orig_dir
+
 def main():
     tests = [
         test_file_exists,
@@ -92,6 +145,8 @@ def main():
         test_path_traversal_blocked,
         test_packet_protocol,
         test_send_packet_format,
+        test_get_jpg_files,
+        test_notify_dedup,
     ]
     passed = failed = 0
     for t in tests:
