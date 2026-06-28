@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for a6400_ble_notify file monitoring logic.
+"""Unit tests for sony_camera_ble_notify file monitoring logic.
 
 The BLE peripheral cannot start without root and a BLE controller,
 so these tests focus on the file monitoring and deduplication logic
@@ -13,7 +13,7 @@ import tempfile
 _here = os.path.dirname(__file__)
 sys.path.insert(0, os.path.join(_here, '..', 'services'))
 
-import a6400_ble_notify as bn
+import sony_camera_ble_notify as bn
 
 # ---------------------------------------------------------------------------
 # File monitoring tests

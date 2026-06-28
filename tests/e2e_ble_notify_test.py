@@ -17,7 +17,7 @@ on the Pi during this time to trigger a notification.
 Requires:
   - bluepy (pip3 install bluepy)
   - root or bluetooth group access to the local BLE adapter
-  - Pi running a6400_ble_notify.py and discoverable via BLE
+  - Pi running sony_camera_ble_notify.py and discoverable via BLE
 """
 
 import sys
@@ -95,7 +95,7 @@ def main():
             else:
                 print("No notifications received — was a new .jpg file created?")
                 print("Ensure the Pi's BLE service is running:")
-                print("  sudo systemctl status a6400-ble-notify")
+                print("  sudo systemctl status sony_camera-ble-notify")
                 sys.exit(1)
 
     except btle.BTLEDisconnectError as e:

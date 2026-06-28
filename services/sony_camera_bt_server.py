@@ -42,7 +42,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
-log = logging.getLogger("a6400-bt")
+log = logging.getLogger("sony-camera-bt")
 
 # Opcodes
 CMD_LIST = 0x01

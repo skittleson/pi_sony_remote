@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fast unit tests for a6400_bt_server (no heavy compression)."""
+"""Fast unit tests for sony_camera_bt_server (no heavy compression)."""
 
 import os
 import struct
@@ -19,7 +19,7 @@ except ImportError:
     bluetooth.RFCOMM = 1
     sys.modules["bluetooth"] = bluetooth
 
-import a6400_bt_server as bt
+import sony_camera_bt_server as bt
 
 def test_file_exists():
     import os

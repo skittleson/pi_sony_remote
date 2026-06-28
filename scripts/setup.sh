@@ -44,13 +44,13 @@ sudo usermod -aG plugdev "$USER"
 # Install the capture monitor and systemd service
 echo "[4/4] Installing capture monitor and service..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cp "$SCRIPT_DIR/../services/a6400_capture.lua" "$HOME/a6400_capture.lua"
-chmod +x "$HOME/a6400_capture.lua"
+cp "$SCRIPT_DIR/../services/sony_camera_capture.lua" "$HOME/sony_camera_capture.lua"
 
-if [ -f "$SCRIPT_DIR/systemd/a6400-capture.service" ]; then
-    sudo cp "$SCRIPT_DIR/systemd/a6400-capture.service" /etc/systemd/system/a6400-capture.service
-    sudo systemctl daemon-reload
-    sudo systemctl enable a6400-capture
+chmod +x "$HOME/sony_camera_capture.lua"
+if [ -f "$SCRIPT_DIR/systemd/sony_camera-capture.service" ]; then
+    sudo cp "$SCRIPT_DIR/systemd/sony_camera-capture.service" /etc/systemd/system/sony_camera-capture.service
+
+    sudo systemctl enable sony_camera-capture
     echo "  Service installed and enabled."
 fi
 
@@ -58,9 +58,9 @@ echo ""
 echo "=== Setup Complete ==="
 echo ""
 echo "Start the service now (after re-login for plugdev group):"
-echo "  sudo systemctl start a6400-capture"
+echo "  sudo systemctl start sony_camera-capture"
 echo ""
 echo "Then just press the camera shutter — photos land in ~/downloads/"
-echo "Watch activity:  tail -f ~/a6400_capture.log"
+echo "Watch activity:  tail -f ~/sony_camera_capture.log"
 echo ""
 echo "NOTE: Re-login for plugdev group changes to take effect before starting."

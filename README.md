@@ -53,14 +53,14 @@ cd pi_sony_remote
 bash setup.sh
 
 # Start the capture service
-sudo systemctl enable --now a6400-capture
+sudo systemctl enable --now sony_camera-capture
 ```
 
 Then press the camera shutter. Photos land in `~/downloads/` automatically.
 
 ```bash
 # Watch captures in real time
-tail -f ~/a6400_capture.log
+tail -f ~/sony_camera_capture.log
 
 # Browse photos from any browser on the LAN
 bash copyparty-setup.sh && sudo systemctl enable --now copyparty
@@ -72,14 +72,14 @@ Transfer to a phone over Bluetooth:
 ```bash
 sudo apt-get install -y python3-pip python3-bluez
 pip3 install Pillow
-python3 a6400_bt_server.py
+python3 sony_camera_bt_server.py
 # → Android client connects and can list/download with quality-level compression
 ```
 
 BLE notify (instant photo alerts over Bluetooth Low Energy):
 
 ```bash
-sudo systemctl enable --now a6400-ble-notify
+sudo systemctl enable --now sony_camera-ble-notify
 # → Pi advertises over BLE; Android client gets notified on each new capture
 ```
 
@@ -182,8 +182,8 @@ sock.close()
   expired. Run `discoverable on` again on the Pi.
 - **"Authentication Rejected"** — no D-Bus agent is running on the Pi.
   See step 1 above.
-- **"Connection refused"** — the `a6400-bluetooth.service` isn't running.
-  Start it: `sudo systemctl start a6400-bluetooth`
+- **"Connection refused"** — the `sony_camera-bluetooth.service` isn't running.
+  Start it: `sudo systemctl start sony_camera-bluetooth`
 - **"Permission denied"** — the device isn't trusted. Run `trust <mac>`
   in `bluetoothctl`.
 
@@ -243,16 +243,16 @@ max 12 bytes (`NNNNN.jpg`), well within the BLE ATT MTU of 20 bytes.
 
 ```bash
 # Start the BLE notify service
-sudo systemctl enable --now a6400-ble-notify
+sudo systemctl enable --now sony_camera-ble-notify
 
 # Check status
-sudo systemctl status a6400-ble-notify
+sudo systemctl status sony_camera-ble-notify
 
 # View logs
-journalctl -u a6400-ble-notify -f
+journalctl -u sony_camera-ble-notify -f
 
 # Stop
-sudo systemctl stop a6400-ble-notify
+sudo systemctl stop sony_camera-ble-notify
 ```
 
 ### Testing from a Linux laptop
@@ -311,9 +311,9 @@ All three services can run simultaneously, or independently:
 
 | Service | Command | Port/Protocol | Notes |
 |---------|---------|---------------|-------|
-| Tethered capture | `sudo systemctl enable --now a6400-capture` | USB | Auto-restarts on USB drop |
-| BLE notify | `sudo systemctl enable --now a6400-ble-notify` | BLE (GATT) | Requires bluezero (pip3 install bluezero) |
-| Bluetooth server | `python3 a6400_bt_server.py` | RFCOMM | Requires Pillow, bluez |
+| Tethered capture | `sudo systemctl enable --now sony_camera-capture` | USB | Auto-restarts on USB drop |
+| BLE notify | `sudo systemctl enable --now sony_camera-ble-notify` | BLE (GATT) | Requires bluezero (pip3 install bluezero) |
+| Bluetooth server | `python3 sony_camera_bt_server.py` | RFCOMM | Requires Pillow, bluez |
 | HTTP server | `bash copyparty-setup.sh && sudo systemctl enable --now copyparty` | `:8080` | Login: admin/admin |
 
 ## Hardware
@@ -334,9 +334,9 @@ All three services can run simultaneously, or independently:
 ## Testing
 
 ```bash
-python3 test_bt_server.py          # Unit tests (protocol, errors, path traversal)
-python3 test_bt_compression.py     # Integration tests (JPEG quality, dimensions, sizes)
-python3 test_ble_notify.py        # Unit tests (file monitoring, deduplication)
+python3 tests/test_bt_server.py          # Unit tests (protocol, errors, path traversal)
+python3 tests/test_bt_compression.py     # Integration tests (JPEG quality, dimensions, sizes)
+python3 tests/test_ble_notify.py        # Unit tests (file monitoring, deduplication)
 sudo python3 e2e_ble_notify_test.py <mac>  # End-to-end BLE notify test
 ```
 
@@ -344,15 +344,15 @@ sudo python3 e2e_ble_notify_test.py <mac>  # End-to-end BLE notify test
 
 | File | Purpose |
 |------|---------|
-| `setup.sh` | Installs dependencies, builds gphoto2 2.5.32 from source with SHA256 verification, configures USB permissions |
-| `a6400_capture.lua` | Tethered capture monitor — loops `gphoto2 --capture-tethered` with automatic restart |
-| `a6400-capture.service` | systemd unit for the Lua capture monitor |
-| `a6400_ble_notify.py` | BLE GATT server — monitors for new captures and sends filename notifications |
-| `a6400-ble-notify.service` | systemd unit for the BLE notify server |
-| `a6400_bt_server.py` | Bluetooth RFCOMM server with on-the-fly JPEG compression |
-| `copyparty-setup.sh` | Installs and configures the copyparty HTTP file server |
-| `copyparty-start.sh` | Startup wrapper for copyparty |
-| `test_bt_server.py` | Unit tests for the Bluetooth server protocol |
-| `test_bt_compression.py` | Integration tests for JPEG compression pipeline |
-| `test_ble_notify.py` | Unit tests for BLE notify file monitoring and deduplication |
-| `e2e_ble_notify_test.py` | End-to-end test client for BLE notifications |
+| `scripts/setup.sh` | Installs dependencies, builds gphoto2 2.5.32 from source with SHA256 verification, configures USB permissions |
+| `services/sony_camera_capture.lua` | Tethered capture monitor — loops `gphoto2 --capture-tethered` with automatic restart |
+| `systemd/sony_camera-capture.service` | systemd unit for the Lua capture monitor |
+| `services/sony_camera_ble_notify.py` | BLE GATT server — monitors for new captures and sends filename notifications |
+| `systemd/sony_camera-ble-notify.service` | systemd unit for the BLE notify server |
+| `services/sony_camera_bt_server.py` | Bluetooth RFCOMM server with on-the-fly JPEG compression |
+| `scripts/copyparty-setup.sh` | Installs and configures the copyparty HTTP file server |
+| `scripts/copyparty-start.sh` | Startup wrapper for copyparty |
+| `tests/test_bt_server.py` | Unit tests for the Bluetooth server protocol |
+| `tests/test_bt_compression.py` | Integration tests for JPEG compression pipeline |
+| `tests/test_ble_notify.py` | Unit tests for BLE notify file monitoring and deduplication |
+| `tests/e2e_ble_notify_test.py` | End-to-end test client for BLE notifications |

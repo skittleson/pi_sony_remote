@@ -17,7 +17,7 @@ BT720 on the Pi 5).
 
 If you have a newer Pi, install bluezero and use the bluezero approach:
   pip3 install bluezero
-  # Then run a6400_ble_notify.py (see commit history for the working version)
+  # Then run sony_camera_ble_notify.py (see commit history for the working version)
 """
 
 import sys

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""End-to-end test for a6400_bt_server RFCOMM protocol.
+"""End-to-end test for sony_camera_bt_server RFCOMM protocol.
 
 Usage:
   On the Pi (server):
-    python3 a6400_bt_server.py
+    python3 sony_camera_bt_server.py
 
   On a Linux laptop (client):
     python3 e2e_bt_server_test.py <BDADDR>

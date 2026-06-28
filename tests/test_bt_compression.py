@@ -13,7 +13,7 @@ _here = os.path.dirname(__file__)
 sys.path.insert(0, os.path.join(_here, '..', 'services'))
 
 from PIL import Image
-import a6400_bt_server as bt
+import sony_camera_bt_server as bt
 
 TEST_FILE = "/home/dietpi/downloads/00001.jpg"
 
