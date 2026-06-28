@@ -14,6 +14,8 @@ No laptop. No phone. Press the shutter and walk away.
 
 [Quick start](#quick-start) · [Features](#features) · [BLE notify](#ble-notify) · [Architecture](#architecture) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
 
+**Also:** [Service Layout](SERVICES.md) — systemd units, WAIT/NOTIFY protocol, wire format, hardware compatibility
+
 </div>
 
 ---
