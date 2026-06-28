@@ -49,16 +49,20 @@ RSP_ERR  = 0xFE
 MAX_PAYLOAD = 10 * 1024 * 1024  # 10 MB cap for GET payload read
 
 def send_packet(sock, opcode, payload):
-    """Send a length-prefixed packet: [opcode][len16][payload]."""
-    header = struct.pack("!BH", opcode, len(payload))
-    sock.sendall(header + payload)
+    """Send a length-prefixed packet: [opcode][len32][payload]."""
+    header = struct.pack("!BI", opcode, len(payload))
+    sock.send(header)
+    # Chunk the payload to avoid RFCOMM buffer overflow
+    chunk = 1024
+    for i in range(0, len(payload), chunk):
+        sock.send(payload[i:i+chunk])
 
 def read_packet(sock):
     """Read a length-prefixed packet. Returns (opcode, payload_bytes)."""
-    hdr = _recv_exact(sock, 3)
+    hdr = _recv_exact(sock, 5)
     if not hdr:
         return None, None
-    opcode, plen = struct.unpack("!BH", hdr)
+    opcode, plen = struct.unpack("!BI", hdr)
     payload = _recv_exact(sock, plen) if plen > 0 else b""
     if len(payload) != plen:
         raise ConnectionError("short read: expected %d got %d" % (plen, len(payload)))

@@ -78,8 +78,8 @@ def test_send_packet_format():
     bt.send_packet(wsock, 0xAB, b"hello")
     raw = rsock.recv(1000)
     assert raw[0] == 0xAB
-    assert struct.unpack("!H", raw[1:3])[0] == 5
-    assert raw[3:] == b"hello"
+    assert struct.unpack("!I", raw[1:5])[0] == 5
+    assert raw[5:] == b"hello"
     rsock.close()
     wsock.close()
 
