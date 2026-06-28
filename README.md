@@ -9,9 +9,10 @@ No laptop. No phone. Press the shutter and walk away.
 ![gphoto2 2.5.32](https://img.shields.io/badge/gphoto2-2.5.32-green?style=flat-square)
 ![systemd](https://img.shields.io/badge/systemd-service-orange?style=flat-square)
 ![Bluetooth RFCOMM](https://img.shields.io/badge/Bluetooth-RFCOMM-blueviolet?style=flat-square)
+![BLE Notify](https://img.shields.io/badge/BLE-Notify-cyan?style=flat-square)
 [![License: MIT](https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square)](LICENSE)
 
-[Quick start](#quick-start) · [Features](#features) · [Architecture](#architecture) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
+[Quick start](#quick-start) · [Features](#features) · [BLE notify](#ble-notify) · [Architecture](#architecture) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
 
 </div>
 
@@ -73,6 +74,13 @@ sudo apt-get install -y python3-pip python3-bluez
 pip3 install Pillow
 python3 a6400_bt_server.py
 # → Android client connects and can list/download with quality-level compression
+```
+
+BLE notify (instant photo alerts over Bluetooth Low Energy):
+
+```bash
+sudo systemctl enable --now a6400-ble-notify
+# → Pi advertises over BLE; Android client gets notified on each new capture
 ```
 
 ## Pairing from a Linux laptop
@@ -188,6 +196,7 @@ sock.close()
 - **Copyparty HTTP server** — thumbnails, grid view, browse from any LAN browser at `http://<pi-ip>:8080`
 - **USB auto-recovery** — Lua monitor detects gphoto2 failures from USB drops and relaunches the tethered session
 - **systemd integration** — capture runs as a persistent service with journal logging
+- **BLE notify** — instant Bluetooth Low Energy notification on each new capture; Android client wakes and connects via RFCOMM
 - **Source-verified gphoto2** — built from source (2.5.32) with SHA256 verification; Raspbian only ships 2.5.28
 
 <details>
@@ -199,6 +208,72 @@ sock.close()
 - **Booths and displays** — self-contained photo station with no laptop footprint
 
 </details>
+
+## BLE notify
+
+The BLE notify service runs alongside the existing RFCOMM server as a
+separate `systemd` unit. It monitors `/home/dietpi/downloads/` for new
+JPEG files and sends a Bluetooth Low Energy notification to any connected
+Android client.
+
+When the Android client receives the notification, it wakes up and connects
+to the RFCOMM server to fetch the file using the existing binary protocol.
+
+### How it works
+
+1. The BLE server polls `/home/dietpi/downloads/` every 2 seconds for
+   new `.jpg` files
+2. On first detection of each file, it sends the filename (e.g. `00002.jpg`)
+   as a BLE notification to all subscribed clients
+3. Duplicates are suppressed — the same file never triggers more than one
+   notification
+4. The Pi advertises with a custom service UUID so clients can discover it
+
+### Custom UUIDs
+
+| Item | UUID |
+|------|------|
+| Service | `F000A001-0451-4000-B000-000000000000` |
+| Characteristic | `F000A002-0451-4000-B000-000000000000` |
+
+The characteristic value is the filename as UTF-8 bytes. Filenames are
+max 12 bytes (`NNNNN.jpg`), well within the BLE ATT MTU of 20 bytes.
+
+### systemd management
+
+```bash
+# Start the BLE notify service
+sudo systemctl enable --now a6400-ble-notify
+
+# Check status
+sudo systemctl status a6400-ble-notify
+
+# View logs
+journalctl -u a6400-ble-notify -f
+
+# Stop
+sudo systemctl stop a6400-ble-notify
+```
+
+### Testing from a Linux laptop
+
+Run the included end-to-end test script:
+
+```bash
+sudo python3 e2e_ble_notify_test.py <PI_MAC_ADDRESS>
+```
+
+The script connects, enables notifications, and listens for 60 seconds.
+Create a new `.jpg` file in `/home/dietpi/downloads/` on the Pi to trigger
+a notification.
+
+### Notes
+
+- Requires root (or `bluetooth` group) to access the BLE controller
+- Notifications are fire-and-forget — if no client is connected at the
+  time of capture, the notification is lost (no queuing)
+- The BLE service and RFCOMM server run as separate `systemd` units for
+  process isolation
 
 ## Architecture
 
@@ -212,7 +287,8 @@ Sony a6400 (PC Remote mode)
         ▼
    ~/downloads/NNNNN.jpg
         │
-        ├──► Bluetooth RFCOMM server  ──► Android / mobile client
+        ├──► BLE notify                ──► Android client (wakes on new capture)
+        ├──► Bluetooth RFCOMM server   ──► Android / mobile client
         └──► Copyparty HTTP server     ──► Browser on LAN
 ```
 
@@ -236,6 +312,7 @@ All three services can run simultaneously, or independently:
 | Service | Command | Port/Protocol | Notes |
 |---------|---------|---------------|-------|
 | Tethered capture | `sudo systemctl enable --now a6400-capture` | USB | Auto-restarts on USB drop |
+| BLE notify | `sudo systemctl enable --now a6400-ble-notify` | BLE (GATT) | Requires root, bluepy |
 | Bluetooth server | `python3 a6400_bt_server.py` | RFCOMM | Requires Pillow, bluez |
 | HTTP server | `bash copyparty-setup.sh && sudo systemctl enable --now copyparty` | `:8080` | Login: admin/admin |
 
@@ -259,6 +336,8 @@ All three services can run simultaneously, or independently:
 ```bash
 python3 test_bt_server.py          # Unit tests (protocol, errors, path traversal)
 python3 test_bt_compression.py     # Integration tests (JPEG quality, dimensions, sizes)
+python3 test_ble_notify.py        # Unit tests (file monitoring, GATT structure)
+sudo python3 e2e_ble_notify_test.py <mac>  # End-to-end BLE notify test
 ```
 
 ## File Reference
@@ -268,8 +347,12 @@ python3 test_bt_compression.py     # Integration tests (JPEG quality, dimensions
 | `setup.sh` | Installs dependencies, builds gphoto2 2.5.32 from source with SHA256 verification, configures USB permissions |
 | `a6400_capture.lua` | Tethered capture monitor — loops `gphoto2 --capture-tethered` with automatic restart |
 | `a6400-capture.service` | systemd unit for the Lua capture monitor |
+| `a6400_ble_notify.py` | BLE GATT server — monitors for new captures and sends filename notifications |
+| `a6400-ble-notify.service` | systemd unit for the BLE notify server |
 | `a6400_bt_server.py` | Bluetooth RFCOMM server with on-the-fly JPEG compression |
 | `copyparty-setup.sh` | Installs and configures the copyparty HTTP file server |
 | `copyparty-start.sh` | Startup wrapper for copyparty |
 | `test_bt_server.py` | Unit tests for the Bluetooth server protocol |
 | `test_bt_compression.py` | Integration tests for JPEG compression pipeline |
+| `test_ble_notify.py` | Unit tests for BLE notify file monitoring |
+| `e2e_ble_notify_test.py` | End-to-end test client for BLE notifications |

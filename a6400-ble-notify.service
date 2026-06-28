@@ -1,0 +1,15 @@
+[Unit]
+Description=Sony a6400 BLE file-arrival notify server
+After=multi-user.target bluetooth.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /home/dietpi/a6400_ble_notify.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
