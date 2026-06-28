@@ -75,6 +75,110 @@ python3 a6400_bt_server.py
 # → Android client connects and can list/download with quality-level compression
 ```
 
+## Pairing from a Linux laptop
+
+To pair the Pi with a Linux laptop so you can test the Bluetooth server
+from the command line:
+
+### 1. On the Pi — make it discoverable and pairable
+
+```bash
+ssh dietpi@<pi-ip>
+echo -e 'discoverable on\npairable on\nexit' | bluetoothctl
+```
+
+Then register a D-Bus agent so the Pi accepts pairing without prompting:
+
+```bash
+python3 -c "
+import dbus
+bus = dbus.SystemBus()
+agent_mgr = dbus.Interface(bus.get_object('org.bluez', '/org/bluez'),
+                           'org.bluez.AgentManager1')
+agent_mgr.RegisterAgent('/test/agent', 'NoInputNoOutput')
+agent_mgr.RequestDefaultAgent('/test/agent')
+print('Agent registered — Pi will accept pairing requests')
+import time; time.sleep(90)
+"
+```
+
+Leave this running in the foreground for at least 90 seconds (or longer
+if you need more time).
+
+### 2. On the laptop — find the Pi's address
+
+If you don't know the Pi's BD address, scan from the laptop:
+
+```bash
+bluetoothctl <<EOF
+scan on
+EOF
+```
+
+Look for the device named "DietPi" (or whatever the Pi's hostname is).
+Note its MAC address (e.g. `B8:27:EB:E5:8F:0C`).
+
+Alternatively, read it from the Pi directly:
+
+```bash
+ssh dietpi@<pi-ip> "python3 -c \"
+import dbus
+bus = dbus.SystemBus()
+props = dbus.Interface(bus.get_object('org.bluez', '/org/bluez/hci0'),
+                       'org.freedesktop.DBus.Properties')
+print(props.Get('org.bluez.Adapter1', 'Address'))
+\""
+```
+
+### 3. On the laptop — pair and trust
+
+```bash
+bluetoothctl <<EOF
+trust B8:27:EB:E5:8F:0C
+connect B8:27:EB:E5:8F:0C
+exit
+EOF
+```
+
+The `trust` is required — without it, RFCOMM socket connections are
+denied by the kernel.
+
+### 4. Test the connection
+
+After pairing, you can test the RFCOMM server from the laptop:
+
+```python
+import socket, struct
+
+AF_BLUETOOTH = 31
+SOCK_STREAM = 1
+BTPROTO_RFCOMM = 3
+
+sock = socket.socket(AF_BLUETOOTH, SOCK_STREAM, BTPROTO_RFCOMM)
+sock.settimeout(30)
+sock.connect(('B8:27:EB:E5:8F:0C', 3))
+
+# LIST request
+sock.send(struct.pack("!BI", 0x01, 0))
+hdr = sock.recv(5)
+opcode, length = struct.unpack("!BI", hdr)
+filenames = sock.recv(length)
+print(filenames.decode())
+
+sock.close()
+```
+
+### Troubleshooting
+
+- **"Device not available"** — the Pi isn't in range or discoverable mode
+  expired. Run `discoverable on` again on the Pi.
+- **"Authentication Rejected"** — no D-Bus agent is running on the Pi.
+  See step 1 above.
+- **"Connection refused"** — the `a6400-bluetooth.service` isn't running.
+  Start it: `sudo systemctl start a6400-bluetooth`
+- **"Permission denied"** — the device isn't trusted. Run `trust <mac>`
+  in `bluetoothctl`.
+
 ## Features
 
 - **Tethered capture** — `gphoto2 --capture-tethered` in a persistent Lua loop with automatic restart on USB drop
